@@ -4,19 +4,20 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.cache import TTLCache
-from backend.app.config import DEFAULT_PERIOD, INDEX_BY_SYMBOL, PERIOD_CONFIG
+from backend.app.config import DEFAULT_PERIOD, INSTRUMENT_BY_SYMBOL, PERIOD_CONFIG, SNAPSHOT_CACHE_SECONDS, HISTORY_CACHE_SECONDS
 from backend.app.models import (
     HealthResponse,
     MarketHistoryResponse,
+    MarketSnapshot,
     MarketsResponse,
     Period,
 )
-from backend.app.services.yfinance_client import fetch_all_snapshots, fetch_history
+from backend.app.services.yfinance_client import fetch_all_snapshots, fetch_history, fetch_snapshot
 
 # Create the FastAPI app
 app = FastAPI(
     title="Market Pulse API",
-    description="Global equity index data for the Market Pulse dashboard",
+    description="Global index and stock quotes for the Market Pulse dashboard",
     version="0.1.0",
 )
 
@@ -32,9 +33,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Create the caches for the API responses (Time to Live is 60 seconds)
-_snapshots_cache: TTLCache[MarketsResponse] = TTLCache(ttl_seconds=60)
-_history_cache: TTLCache[MarketHistoryResponse] = TTLCache(ttl_seconds=60)
+# Snapshot cache is short so last quotes can refresh while markets are open
+_snapshots_cache: TTLCache[MarketsResponse] = TTLCache(ttl_seconds=SNAPSHOT_CACHE_SECONDS)
+_quote_cache: TTLCache[MarketSnapshot] = TTLCache(ttl_seconds=SNAPSHOT_CACHE_SECONDS)
+_history_cache: TTLCache[MarketHistoryResponse] = TTLCache(ttl_seconds=HISTORY_CACHE_SECONDS)
 
 # Health check endpoint
 @app.get("/health", response_model=HealthResponse)
@@ -50,14 +52,34 @@ def get_markets() -> MarketsResponse:
     if cached is not None:
         return cached
 
-    # Fetch the markets from the API
+    # Fetch the markets from Yahoo via the data layer
     response = MarketsResponse(
         markets=fetch_all_snapshots(),
         fetched_at=datetime.now(timezone.utc),
     )
-    # Set the cache for the markets response
+    # Set the cache for the markets response and each ticker so per-symbol refresh can reuse it
     _snapshots_cache.set("markets", response)
+    for market in response.markets:
+        _quote_cache.set(f"snapshot:{market.symbol}", market)
     return response
+
+
+# Single-ticker snapshot used by the dashboard to auto-refresh each current level/price
+@app.get("/api/markets/snapshot", response_model=MarketSnapshot)
+def get_market_snapshot(
+    symbol: str = Query(..., description="Yahoo Finance ticker, e.g. ^GSPC or MSFT"),
+) -> MarketSnapshot:
+    if symbol not in INSTRUMENT_BY_SYMBOL:
+        raise HTTPException(status_code=404, detail=f"Unknown symbol: {symbol}")
+
+    cache_key = f"snapshot:{symbol}"
+    cached = _quote_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    snapshot = fetch_snapshot(INSTRUMENT_BY_SYMBOL[symbol])
+    _quote_cache.set(cache_key, snapshot)
+    return snapshot
 
 # Market history endpoint
 @app.get("/api/markets/history", response_model=MarketHistoryResponse)
@@ -68,7 +90,7 @@ def get_market_history(
     period: Period = Query(DEFAULT_PERIOD, description="Chart time range"),
 ) -> MarketHistoryResponse:
     # Check if the symbol is valid
-    if symbol not in INDEX_BY_SYMBOL:
+    if symbol not in INSTRUMENT_BY_SYMBOL:
         raise HTTPException(status_code=404, detail=f"Unknown symbol: {symbol}")
     # Check if the period is valid
     if period not in PERIOD_CONFIG:

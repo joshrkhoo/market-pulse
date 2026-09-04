@@ -13,7 +13,9 @@ Period = Literal["1D", "1W", "1M", "3M", "1Y", "MAX"]
 """
 A model for the market snapshot
 This is used to store the market snapshot for the markets response
-A market snapshot is a single market at a given time
+A market snapshot is a single ticker at a given time.
+Indexes expose a current *level*; stocks expose a current *price*.
+Both include session open, last completed close, and session status.
 """
 class MarketSnapshot(BaseModel):
     symbol: str
@@ -21,10 +23,19 @@ class MarketSnapshot(BaseModel):
     region: str
     currency: str
     timezone: str
-    level: float | None = None
+    kind: Literal["index", "stock"] = "index"
+    last: float | None = Field(
+        None, description="Current delayed quote (index level or stock price)"
+    )
+    open: float | None = Field(None, description="Session open")
+    close: float | None = Field(
+        None, description="Last completed session close (previous close while the market is open)"
+    )
     daily_return_pct: float | None = Field(
         None, description="Percentage change vs prior trading close"
     )
+    is_open: bool = False
+    session_note: str = "Closed"
     updated_at: datetime | None = None
     error: str | None = None
 
@@ -56,6 +67,7 @@ A market history response is a list of price points
 class MarketHistoryResponse(BaseModel):
     symbol: str
     name: str
+    kind: Literal["index", "stock"] = "index"
     period: Period
     currency: str
     points: list[PricePoint]
