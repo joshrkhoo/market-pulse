@@ -60,7 +60,7 @@ npm install
 npm run dev
 ```
 
-Dashboard: to be added when deployed 
+Live dashboard: [https://market-pulse.joshrkhoo.com/](https://market-pulse.joshrkhoo.com/)
 
 ## API endpoints
 
