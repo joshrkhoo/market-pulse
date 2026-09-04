@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, HTTPException, Query
@@ -21,13 +22,23 @@ app = FastAPI(
     version="0.1.0",
 )
 
+# Local defaults plus optional CORS_ORIGINS (comma-separated) for deployed frontends
+_DEFAULT_CORS_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://market-pulse-pi-ten.vercel.app",
+]
+_extra_origins = [
+    origin.strip()
+    for origin in os.getenv("CORS_ORIGINS", "").split(",")
+    if origin.strip()
+]
+_cors_origins = list(dict.fromkeys([*_DEFAULT_CORS_ORIGINS, *_extra_origins]))
+
 # CORS is enabled to allow requests from the frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
