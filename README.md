@@ -33,7 +33,7 @@ pip install -r requirements.txt
 uvicorn backend.app.main:app --reload --port 8000
 ```
 
-API docs: http://localhost:8000/docs
+API docs: 
 
 ### 2. Snapshot script (no UI)
 
@@ -50,7 +50,7 @@ npm install
 npm run dev
 ```
 
-Dashboard: http://localhost:3000
+Dashboard:
 
 ## API endpoints
 
