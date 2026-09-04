@@ -1,16 +1,17 @@
 # Market Pulse
 
-A global market dashboard that tracks five major equity indices using Yahoo Finance data.
+A global market dashboard that tracks major equity indices and selected stocks using Yahoo Finance data.
 
 ## V1 coverage
 
-| Market | Ticker | Region |
-|---|---|---|
-| S&P 500 | `^GSPC` | United States |
-| NASDAQ Composite | `^IXIC` | United States |
-| ASX 200 | `^AXJO` | Australia |
-| Hang Seng Index | `^HSI` | Hong Kong |
-| Nikkei 225 | `^N225` | Japan |
+| Market | Ticker | Region | Quote |
+|---|---|---|---|
+| S&P 500 | `^GSPC` | United States | Level |
+| NASDAQ Composite | `^IXIC` | United States | Level |
+| ASX 200 | `^AXJO` | Australia | Level |
+| Hang Seng Index | `^HSI` | Hong Kong | Level |
+| Nikkei 225 | `^N225` | Japan | Level |
+| Microsoft | `MSFT` | United States | Price |
 
 ## Project structure
 
@@ -57,8 +58,9 @@ Dashboard: http://localhost:3000
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/health` | Health check |
-| `GET` | `/api/markets` | Latest level and daily return for all indices |
-| `GET` | `/api/markets/history?symbol=^GSPC&period=1M` | Historical close prices |
+| `GET` | `/api/markets` | Current quote, open, close, and daily return for all tickers |
+| `GET` | `/api/markets/snapshot?symbol=^GSPC` | Current quote for one ticker (used for auto-refresh) |
+| `GET` | `/api/markets/history?symbol=^GSPC&period=1M` | Historical close series |
 
 Supported chart periods: `1D`, `1W`, `1M`, `3M`, `1Y`, `MAX`.
 
@@ -71,5 +73,7 @@ pytest backend/tests/
 ## Notes
 
 - Daily percentage change uses the prior **trading** close, not the prior calendar day.
-- Yahoo Finance data is delayed — this is not a real-time trading system.
+- Session status uses regular weekday hours (including lunch breaks) and does not include public holidays.
+- Each ticker's current **level** (indexes) or **price** (stocks) auto-refreshes about every 30 seconds. Yahoo Finance data is delayed — this is not a real-time trading system.
+- Open is the session open. Close is the last completed session close (previous close while the market is still open).
 - Index levels are not directly comparable across markets; use percentage returns for comparison.
