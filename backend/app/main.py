@@ -27,6 +27,7 @@ _DEFAULT_CORS_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "https://market-pulse-pi-ten.vercel.app",
+    "https://market-pulse.joshrkhoo.com",
 ]
 _extra_origins = [
     origin.strip()
