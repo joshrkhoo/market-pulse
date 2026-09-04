@@ -11,7 +11,7 @@ import {
 } from "recharts";
 
 import type { MarketHistoryResponse } from "@/types/market";
-import { formatLevel } from "@/lib/format";
+import { formatLevel, quoteNoun } from "@/lib/format";
 
 /* 
 A component to display the chart of a market
@@ -22,14 +22,41 @@ interface MarketChartProps {
 }
 
 /* 
-A function to format the date for the x-axis
+Format a chart timestamp for the x-axis.
+Longer ranges include the year so labels stay meaningful (e.g. MAX history).
 */
 function formatAxisDate(value: string, period: string): string {
   const date = new Date(value);
   if (period === "1D") {
     return date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
   }
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  if (period === "1W" || period === "1M") {
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" });
+  }
+  // 3M / 1Y / MAX: prefer month + year so decades of history stay readable
+  return date.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+}
+
+/* 
+Format a chart timestamp for the tooltip (more detail than the axis).
+Always includes the year outside of 1D.
+*/
+function formatTooltipDate(value: string, period: string): string {
+  const date = new Date(value);
+  if (period === "1D") {
+    return date.toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 /* 
@@ -98,8 +125,8 @@ export function MarketChart({ history, loading }: MarketChartProps) {
               border: "1px solid #3f3f46",
               borderRadius: "8px",
             }}
-            labelFormatter={(value) => formatAxisDate(String(value), history.period)}
-            formatter={(value) => [formatLevel(Number(value)), "Close"]}
+            labelFormatter={(value) => formatTooltipDate(String(value), history.period)}
+            formatter={(value) => [formatLevel(Number(value)), quoteNoun(history.kind)]}
           />
           <Line
             type="monotone"

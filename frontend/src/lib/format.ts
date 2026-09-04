@@ -1,7 +1,8 @@
+import type { AssetKind } from "@/types/market";
+
 /**
- * A function to format the level
- * This is used to format the level for the market snapshot
- * A level for an index is the equivalent to a single price of a stock at a given time
+ * A function to format a numeric quote
+ * Indexes are displayed as levels; stocks are displayed as prices
  */
 export function formatLevel(value: number | null): string {
   if (value === null) return "—";
@@ -14,7 +15,7 @@ export function formatLevel(value: number | null): string {
 /**
  * A function to format the return
  * This is used to format the return for the market snapshot
- * A return is the daily return percentage of an index
+ * A return is the daily return percentage vs the prior trading close
  */
 export function formatReturn(value: number | null): string {
   if (value === null) return "—";
@@ -49,4 +50,11 @@ export function returnColor(value: number | null): string {
   if (value > 0) return "text-emerald-400";
   if (value < 0) return "text-rose-400";
   return "text-zinc-300";
+}
+
+/**
+ * Indexes are quoted as a level; stocks are quoted as a price
+ */
+export function quoteNoun(kind: AssetKind): "Level" | "Price" {
+  return kind === "stock" ? "Price" : "Level";
 }

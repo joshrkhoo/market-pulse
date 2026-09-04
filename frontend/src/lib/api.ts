@@ -1,4 +1,4 @@
-import type { MarketHistoryResponse, MarketsResponse, Period } from "@/types/market";
+import type { MarketHistoryResponse, MarketSnapshot, MarketsResponse, Period } from "@/types/market";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -15,6 +15,14 @@ Calls the /api/markets endpoint to get the list of markets
 */
 export function getMarkets(): Promise<MarketsResponse> {
   return fetchJson<MarketsResponse>(`${API_BASE}/api/markets`);
+}
+
+/* 
+Calls the /api/markets/snapshot endpoint to refresh one ticker's current quote
+*/
+export function getMarketSnapshot(symbol: string): Promise<MarketSnapshot> {
+  const params = new URLSearchParams({ symbol });
+  return fetchJson<MarketSnapshot>(`${API_BASE}/api/markets/snapshot?${params}`);
 }
 
 /* 

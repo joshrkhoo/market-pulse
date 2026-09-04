@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { getMarketHistory, getMarkets } from "@/lib/api";
-import { formatTimestamp } from "@/lib/format";
+import { getMarketHistory, getMarketSnapshot, getMarkets } from "@/lib/api";
+import { formatTimestamp, quoteNoun } from "@/lib/format";
 import type { MarketHistoryResponse, MarketSnapshot, Period } from "@/types/market";
-import { DEFAULT_SYMBOL } from "@/types/market";
+import { DEFAULT_SYMBOL, MARKET_POLL_MS } from "@/types/market";
 
 import { MarketChart } from "./MarketChart";
 import { MarketTable } from "./MarketTable";
@@ -23,52 +23,73 @@ export function Dashboard() {
   const [historyLoading, setHistoryLoading] = useState(false);
 
   /**
-   * A function to load the markets
+   * A function to load the markets.
+   * silent=true is used by auto-refresh so the table does not flash a loading state.
    */
-  const loadMarkets = useCallback(async () => {
-    // Change state to loading
-    setMarketsLoading(true);
+  const loadMarkets = useCallback(async (silent = false) => {
+    if (!silent) {
+      setMarketsLoading(true);
+    }
     setMarketsError(null);
 
-    // Try to fetch the markets from the API
     try {
       const response = await getMarkets();
       setMarkets(response.markets);
       setFetchedAt(response.fetched_at);
-      // Set the error to null
     } catch (error) {
       setMarketsError(error instanceof Error ? error.message : "Failed to load markets");
-      // Set the loading to false
     } finally {
-      setMarketsLoading(false);
+      if (!silent) {
+        setMarketsLoading(false);
+      }
     }
   }, []);
 
   /**
-   * A function to load the history
-   * This is used to load the history from the API
-   * A history is a list of price points
+   * A function to load the history.
+   * A history is a list of price points. silent=true skips the chart loading placeholder.
    */
-  const loadHistory = useCallback(async (symbol: string, selectedPeriod: Period) => {
-    setHistoryLoading(true);
-    // Try to fetch the history from the API
+  const loadHistory = useCallback(
+    async (symbol: string, selectedPeriod: Period, silent = false) => {
+      if (!silent) {
+        setHistoryLoading(true);
+      }
+      try {
+        const response = await getMarketHistory(symbol, selectedPeriod);
+        setHistory(response);
+      } catch (error) {
+        setHistory({
+          symbol,
+          name: symbol,
+          kind: "index",
+          period: selectedPeriod,
+          currency: "",
+          points: [],
+          fetched_at: new Date().toISOString(),
+          error: error instanceof Error ? error.message : "Failed to load history",
+        });
+      } finally {
+        if (!silent) {
+          setHistoryLoading(false);
+        }
+      }
+    },
+    [],
+  );
+
+  /**
+   * Refresh one ticker's current level/price without reloading the whole table
+   */
+  const refreshTicker = useCallback(async (symbol: string) => {
     try {
-      const response = await getMarketHistory(symbol, selectedPeriod);
-      setHistory(response);
-    } catch (error) {
-      setHistory({
-        symbol,
-        name: markets.find((m) => m.symbol === symbol)?.name ?? symbol,
-        period: selectedPeriod,
-        currency: "",
-        points: [],
-        fetched_at: new Date().toISOString(),
-        error: error instanceof Error ? error.message : "Failed to load history",
-      });
-    } finally {
-      setHistoryLoading(false);
+      const snapshot = await getMarketSnapshot(symbol);
+      setMarkets((current) =>
+        current.map((market) => (market.symbol === symbol ? snapshot : market)),
+      );
+    } catch {
+      // Keep the existing row if a single ticker refresh fails
     }
-  }, [markets]);
+  }, []);
 
   useEffect(() => {
     void loadMarkets();
@@ -79,6 +100,36 @@ export function Dashboard() {
   }, [selectedSymbol, period, loadHistory]);
 
   const selectedMarket = markets.find((market) => market.symbol === selectedSymbol);
+  const anyOpen = markets.some((market) => market.is_open);
+  const tickerSymbols = markets.map((market) => market.symbol).join("|");
+
+  /**
+   * Auto-refresh each ticker's current quote on its own timer.
+   * Skip while the tab is hidden. Also refresh the 1D chart so it stays current while open.
+   */
+  useEffect(() => {
+    if (!tickerSymbols) {
+      return;
+    }
+    const symbols = tickerSymbols.split("|");
+    const timers = symbols.map((symbol, index) =>
+      window.setInterval(
+        () => {
+          if (typeof document !== "undefined" && document.hidden) {
+            return;
+          }
+          void refreshTicker(symbol);
+          if (period === "1D" && symbol === selectedSymbol) {
+            void loadHistory(selectedSymbol, period, true);
+          }
+        },
+        MARKET_POLL_MS + index * 350,
+      ),
+    );
+    return () => {
+      timers.forEach((id) => window.clearInterval(id));
+    };
+  }, [tickerSymbols, refreshTicker, loadHistory, selectedSymbol, period]);
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-10 sm:px-6">
@@ -89,8 +140,8 @@ export function Dashboard() {
           </p>
           <h1 className="mt-1 text-3xl font-semibold text-zinc-50">Global Market Dashboard</h1>
           <p className="mt-2 max-w-2xl text-sm text-zinc-400">
-            Daily index levels and returns across five major equity benchmarks. Markets close at
-            different times — values are not simultaneous.
+            Delayed last quotes (index levels and stock prices). Session status uses regular
+            exchange hours and does not include public holidays. Each ticker auto-refreshes.
           </p>
         </div>
         <button
@@ -128,7 +179,10 @@ export function Dashboard() {
               {selectedMarket?.name ?? "Price history"}
             </h2>
             <p className="text-sm text-zinc-500">
-              {selectedMarket?.symbol ?? selectedSymbol} · Close price
+              {selectedMarket?.symbol ?? selectedSymbol} · Current {selectedMarket ? quoteNoun(selectedMarket.kind).toLowerCase() : "level"}
+              {selectedMarket
+                ? ` · ${selectedMarket.is_open ? "Open" : "Closed"} · ${selectedMarket.session_note}`
+                : ""}
             </p>
           </div>
           <PeriodSelector value={period} onChange={setPeriod} />
@@ -138,7 +192,9 @@ export function Dashboard() {
 
       {fetchedAt && (
         <p className="text-center text-xs text-zinc-500">
-          Snapshot fetched {formatTimestamp(fetchedAt)}. Data via Yahoo Finance (delayed).
+          Quotes fetched {formatTimestamp(fetchedAt)}. Each ticker auto-refreshes every 30s
+          {anyOpen ? " while a market is open" : ""}
+          . Data via Yahoo Finance (delayed).
         </p>
       )}
     </div>

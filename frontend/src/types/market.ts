@@ -1,9 +1,12 @@
 export type Period = "1D" | "1W" | "1M" | "3M" | "1Y" | "MAX";
 
+/** Indexes are quoted as levels; stocks are quoted as prices */
+export type AssetKind = "index" | "stock";
+
 /**
  * A type for the market snapshot
  * This is used to store the market snapshot for the markets response
- * A market snapshot is a single market at a given time
+ * A market snapshot is a single ticker at a given time
  */
 export interface MarketSnapshot {
   symbol: string;
@@ -11,8 +14,18 @@ export interface MarketSnapshot {
   region: string;
   currency: string;
   timezone: string;
-  level: number | null;
+  kind: AssetKind;
+  /** Current delayed quote: index level or stock price */
+  last: number | null;
+  /** Session open */
+  open: number | null;
+  /** Last completed session close */
+  close: number | null;
   daily_return_pct: number | null;
+  /** True during regular weekday cash-session hours */
+  is_open: boolean;
+  /** e.g. "Closes 16:00" or "Opens Fri 09:30" */
+  session_note: string;
   updated_at: string | null;
   error: string | null;
 }
@@ -45,6 +58,7 @@ export interface PricePoint {
 export interface MarketHistoryResponse {
   symbol: string;
   name: string;
+  kind: AssetKind;
   period: Period;
   currency: string;
   points: PricePoint[];
@@ -55,3 +69,6 @@ export interface MarketHistoryResponse {
 export const PERIODS: Period[] = ["1D", "1W", "1M", "3M", "1Y", "MAX"];
 
 export const DEFAULT_SYMBOL = "^GSPC";
+
+/** How often each ticker's current level/price is polled */
+export const MARKET_POLL_MS = 30_000;
