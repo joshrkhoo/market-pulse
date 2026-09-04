@@ -2,6 +2,17 @@
 
 A global market dashboard that tracks major equity indices and selected stocks using Yahoo Finance data.
 
+## Dashboard features
+
+What the UI shows today:
+
+- **Overview table** for each ticker: market name, region, open/closed badge, **Current** (level for indexes, price for stocks), **Open**, **Close**, **Daily %**, and last **Updated** time
+- **Session status** from regular exchange hours (e.g. `Closed · Opens Fri 09:30`) — lunch breaks count as closed; public holidays are not modelled
+- **Automatic refreshing** every **75 seconds**, with **Updated just now / Xs ago** and **Next refresh in Ns** next to the manual **Refresh** button
+- **Historical line chart** with ranges `1D`, `1W`, `1M`, `3M`, `1Y`, `MAX`
+- Chart axis/tooltip dates include the **year** on longer ranges so MAX history stays readable
+- Footer notes delayed Yahoo Finance data
+
 ## V1 coverage
 
 | Market | Ticker | Region | Quote |
@@ -34,7 +45,7 @@ pip install -r requirements.txt
 uvicorn backend.app.main:app --reload --port 8000
 ```
 
-API docs: 
+API docs: http://localhost:8000/docs
 
 ### 2. Snapshot script (no UI)
 
@@ -51,7 +62,7 @@ npm install
 npm run dev
 ```
 
-Dashboard:
+Dashboard: http://localhost:3000
 
 ## API endpoints
 
@@ -59,7 +70,7 @@ Dashboard:
 |---|---|---|
 | `GET` | `/health` | Health check |
 | `GET` | `/api/markets` | Current quote, open, close, and daily return for all tickers |
-| `GET` | `/api/markets/snapshot?symbol=^GSPC` | Current quote for one ticker (used for auto-refresh) |
+| `GET` | `/api/markets/snapshot?symbol=^GSPC` | Current quote for one ticker |
 | `GET` | `/api/markets/history?symbol=^GSPC&period=1M` | Historical close series |
 
 Supported chart periods: `1D`, `1W`, `1M`, `3M`, `1Y`, `MAX`.
@@ -74,6 +85,8 @@ pytest backend/tests/
 
 - Daily percentage change uses the prior **trading** close, not the prior calendar day.
 - Session status uses regular weekday hours (including lunch breaks) and does not include public holidays.
-- Each ticker's current **level** (indexes) or **price** (stocks) auto-refreshes every **75 seconds**, with an “updated X ago” label and countdown to the next poll. The manual Refresh button still works. Yahoo Finance data is delayed — this is not a real-time trading system.
-- Open is the session open. Close is the last completed session close (previous close while the market is still open).
+- Quotes auto-refresh every **75 seconds**. The header shows “updated X ago” and a countdown to the next poll; the manual **Refresh** button still works.
+- Open is the session open. Close is the last completed session close (previous close while the market is still open). When a market is closed, Current and Close are often the same.
+- Indexes are quoted as a **level**; stocks are quoted as a **price**.
+- Yahoo Finance data is delayed — this is not a real-time trading system.
 - Index levels are not directly comparable across markets; use percentage returns for comparison.
