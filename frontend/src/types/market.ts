@@ -70,5 +70,8 @@ export const PERIODS: Period[] = ["1D", "1W", "1M", "3M", "1Y", "MAX"];
 
 export const DEFAULT_SYMBOL = "^GSPC";
 
-/** How often each ticker's current level/price is polled */
-export const MARKET_POLL_MS = 30_000;
+/** Auto-refresh interval for snapshot polling (75s sits in the 60–90s range) */
+export const MARKET_POLL_MS = 75_000;
+
+/** Seconds between automatic snapshot refreshes */
+export const MARKET_POLL_SECONDS = MARKET_POLL_MS / 1000;

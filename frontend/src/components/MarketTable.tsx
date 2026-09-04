@@ -29,7 +29,7 @@ function SessionBadge({ isOpen, note }: { isOpen: boolean; note: string }) {
 }
 
 /**
- * A table of tickers. Current quotes auto-refresh per row.
+ * A table of tickers. Current quotes auto-refresh with the dashboard poll cycle.
  * Indexes show a Level; stocks show a Price. Open/Close are session values.
  */
 export function MarketTable({ markets, selectedSymbol, onSelect }: MarketTableProps) {

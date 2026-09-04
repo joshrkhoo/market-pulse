@@ -74,6 +74,6 @@ pytest backend/tests/
 
 - Daily percentage change uses the prior **trading** close, not the prior calendar day.
 - Session status uses regular weekday hours (including lunch breaks) and does not include public holidays.
-- Each ticker's current **level** (indexes) or **price** (stocks) auto-refreshes about every 30 seconds. Yahoo Finance data is delayed — this is not a real-time trading system.
+- Each ticker's current **level** (indexes) or **price** (stocks) auto-refreshes every **75 seconds**, with an “updated X ago” label and countdown to the next poll. The manual Refresh button still works. Yahoo Finance data is delayed — this is not a real-time trading system.
 - Open is the session open. Close is the last completed session close (previous close while the market is still open).
 - Index levels are not directly comparable across markets; use percentage returns for comparison.

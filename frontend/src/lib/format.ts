@@ -58,3 +58,15 @@ export function returnColor(value: number | null): string {
 export function quoteNoun(kind: AssetKind): "Level" | "Price" {
   return kind === "stock" ? "Price" : "Level";
 }
+
+/**
+ * Format how long ago quotes were last updated, e.g. "just now", "12s ago", "2m ago"
+ */
+export function formatUpdatedAgo(secondsAgo: number): string {
+  if (secondsAgo < 10) return "just now";
+  if (secondsAgo < 60) return `${secondsAgo}s ago`;
+  const minutes = Math.floor(secondsAgo / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ago`;
+}

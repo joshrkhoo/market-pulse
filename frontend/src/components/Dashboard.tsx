@@ -1,11 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { getMarketHistory, getMarketSnapshot, getMarkets } from "@/lib/api";
-import { formatTimestamp, quoteNoun } from "@/lib/format";
+import { getMarketHistory, getMarkets } from "@/lib/api";
+import { formatTimestamp, formatUpdatedAgo, quoteNoun } from "@/lib/format";
 import type { MarketHistoryResponse, MarketSnapshot, Period } from "@/types/market";
-import { DEFAULT_SYMBOL, MARKET_POLL_MS } from "@/types/market";
+import { DEFAULT_SYMBOL, MARKET_POLL_SECONDS } from "@/types/market";
 
 import { MarketChart } from "./MarketChart";
 import { MarketTable } from "./MarketTable";
@@ -22,28 +22,53 @@ export function Dashboard() {
   const [history, setHistory] = useState<MarketHistoryResponse | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
 
+  // Auto-refresh UI: countdown to next poll, and seconds since last successful update
+  const [secondsUntilRefresh, setSecondsUntilRefresh] = useState(MARKET_POLL_SECONDS);
+  const [secondsSinceUpdate, setSecondsSinceUpdate] = useState(0);
+  const refreshInFlight = useRef(false);
+
+  /**
+   * Reset the auto-refresh countdown after a successful snapshot fetch
+   */
+  const markQuotesFresh = useCallback(() => {
+    setSecondsUntilRefresh(MARKET_POLL_SECONDS);
+    setSecondsSinceUpdate(0);
+  }, []);
+
   /**
    * A function to load the markets.
    * silent=true is used by auto-refresh so the table does not flash a loading state.
    */
-  const loadMarkets = useCallback(async (silent = false) => {
-    if (!silent) {
-      setMarketsLoading(true);
-    }
-    setMarketsError(null);
-
-    try {
-      const response = await getMarkets();
-      setMarkets(response.markets);
-      setFetchedAt(response.fetched_at);
-    } catch (error) {
-      setMarketsError(error instanceof Error ? error.message : "Failed to load markets");
-    } finally {
-      if (!silent) {
-        setMarketsLoading(false);
+  const loadMarkets = useCallback(
+    async (silent = false) => {
+      if (refreshInFlight.current) {
+        return;
       }
-    }
-  }, []);
+      refreshInFlight.current = true;
+
+      if (!silent) {
+        setMarketsLoading(true);
+      }
+      setMarketsError(null);
+
+      try {
+        const response = await getMarkets();
+        setMarkets(response.markets);
+        setFetchedAt(response.fetched_at);
+        markQuotesFresh();
+      } catch (error) {
+        setMarketsError(error instanceof Error ? error.message : "Failed to load markets");
+        // Still reset the countdown so a failed poll does not retry in a tight loop
+        setSecondsUntilRefresh(MARKET_POLL_SECONDS);
+      } finally {
+        refreshInFlight.current = false;
+        if (!silent) {
+          setMarketsLoading(false);
+        }
+      }
+    },
+    [markQuotesFresh],
+  );
 
   /**
    * A function to load the history.
@@ -77,20 +102,6 @@ export function Dashboard() {
     [],
   );
 
-  /**
-   * Refresh one ticker's current level/price without reloading the whole table
-   */
-  const refreshTicker = useCallback(async (symbol: string) => {
-    try {
-      const snapshot = await getMarketSnapshot(symbol);
-      setMarkets((current) =>
-        current.map((market) => (market.symbol === symbol ? snapshot : market)),
-      );
-    } catch {
-      // Keep the existing row if a single ticker refresh fails
-    }
-  }, []);
-
   useEffect(() => {
     void loadMarkets();
   }, [loadMarkets]);
@@ -99,37 +110,44 @@ export function Dashboard() {
     void loadHistory(selectedSymbol, period);
   }, [selectedSymbol, period, loadHistory]);
 
-  const selectedMarket = markets.find((market) => market.symbol === selectedSymbol);
-  const anyOpen = markets.some((market) => market.is_open);
-  const tickerSymbols = markets.map((market) => market.symbol).join("|");
-
   /**
-   * Auto-refresh each ticker's current quote on its own timer.
-   * Skip while the tab is hidden. Also refresh the 1D chart so it stays current while open.
+   * Tick once per second: advance "updated X ago" and the refresh countdown.
+   * Skip while the tab is hidden so we do not hammer Yahoo in the background.
    */
   useEffect(() => {
-    if (!tickerSymbols) {
+    const id = window.setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) {
+        return;
+      }
+      setSecondsSinceUpdate((seconds) => seconds + 1);
+      setSecondsUntilRefresh((seconds) => Math.max(0, seconds - 1));
+    }, 1000);
+
+    return () => window.clearInterval(id);
+  }, []);
+
+  /**
+   * When the countdown reaches zero, poll the markets snapshot endpoint again.
+   * Also refresh the 1D chart so intraday history stays current.
+   */
+  useEffect(() => {
+    if (secondsUntilRefresh > 0) {
       return;
     }
-    const symbols = tickerSymbols.split("|");
-    const timers = symbols.map((symbol, index) =>
-      window.setInterval(
-        () => {
-          if (typeof document !== "undefined" && document.hidden) {
-            return;
-          }
-          void refreshTicker(symbol);
-          if (period === "1D" && symbol === selectedSymbol) {
-            void loadHistory(selectedSymbol, period, true);
-          }
-        },
-        MARKET_POLL_MS + index * 350,
-      ),
-    );
-    return () => {
-      timers.forEach((id) => window.clearInterval(id));
-    };
-  }, [tickerSymbols, refreshTicker, loadHistory, selectedSymbol, period]);
+    if (typeof document !== "undefined" && document.hidden) {
+      return;
+    }
+    if (refreshInFlight.current) {
+      return;
+    }
+
+    void loadMarkets(true);
+    if (period === "1D") {
+      void loadHistory(selectedSymbol, period, true);
+    }
+  }, [secondsUntilRefresh, loadMarkets, loadHistory, selectedSymbol, period]);
+
+  const selectedMarket = markets.find((market) => market.symbol === selectedSymbol);
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-10 sm:px-6">
@@ -141,17 +159,26 @@ export function Dashboard() {
           <h1 className="mt-1 text-3xl font-semibold text-zinc-50">Global Market Dashboard</h1>
           <p className="mt-2 max-w-2xl text-sm text-zinc-400">
             Delayed last quotes (index levels and stock prices). Session status uses regular
-            exchange hours and does not include public holidays. Each ticker auto-refreshes.
+            exchange hours and does not include public holidays. Quotes auto-refresh every{" "}
+            {MARKET_POLL_SECONDS}s.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => void loadMarkets()}
-          disabled={marketsLoading}
-          className="rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm text-zinc-200 transition-colors hover:bg-zinc-800 disabled:opacity-50"
-        >
-          {marketsLoading ? "Refreshing…" : "Refresh"}
-        </button>
+        <div className="flex flex-col items-stretch gap-1 sm:items-end">
+          <button
+            type="button"
+            onClick={() => void loadMarkets()}
+            disabled={marketsLoading}
+            className="rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm text-zinc-200 transition-colors hover:bg-zinc-800 disabled:opacity-50"
+          >
+            {marketsLoading ? "Refreshing…" : "Refresh"}
+          </button>
+          {fetchedAt && (
+            <p className="text-xs text-zinc-500">
+              Updated {formatUpdatedAgo(secondsSinceUpdate)} · Next refresh in{" "}
+              {secondsUntilRefresh}s
+            </p>
+          )}
+        </div>
       </header>
 
       {marketsError && (
@@ -179,7 +206,8 @@ export function Dashboard() {
               {selectedMarket?.name ?? "Price history"}
             </h2>
             <p className="text-sm text-zinc-500">
-              {selectedMarket?.symbol ?? selectedSymbol} · Current {selectedMarket ? quoteNoun(selectedMarket.kind).toLowerCase() : "level"}
+              {selectedMarket?.symbol ?? selectedSymbol} · Current{" "}
+              {selectedMarket ? quoteNoun(selectedMarket.kind).toLowerCase() : "level"}
               {selectedMarket
                 ? ` · ${selectedMarket.is_open ? "Open" : "Closed"} · ${selectedMarket.session_note}`
                 : ""}
@@ -192,9 +220,9 @@ export function Dashboard() {
 
       {fetchedAt && (
         <p className="text-center text-xs text-zinc-500">
-          Quotes fetched {formatTimestamp(fetchedAt)}. Each ticker auto-refreshes every 30s
-          {anyOpen ? " while a market is open" : ""}
-          . Data via Yahoo Finance (delayed).
+          Last snapshot {formatTimestamp(fetchedAt)}. Auto-refresh every {MARKET_POLL_SECONDS}s
+          (countdown in the header). Manual Refresh still available. Data via Yahoo Finance
+          (delayed).
         </p>
       )}
     </div>
