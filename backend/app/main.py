@@ -5,14 +5,28 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.cache import TTLCache
-from backend.app.config import DEFAULT_PERIOD, INSTRUMENT_BY_SYMBOL, PERIOD_CONFIG, SNAPSHOT_CACHE_SECONDS, HISTORY_CACHE_SECONDS
+from backend.app.config import (
+    BASE_CURRENCIES,
+    COMPARISON_CACHE_SECONDS,
+    COMPARISON_PERIODS,
+    COMPARISON_PERSPECTIVES,
+    DEFAULT_BASE_CURRENCY,
+    DEFAULT_PERIOD,
+    INSTRUMENT_BY_SYMBOL,
+    MAX_COMPARISON_SYMBOLS,
+    PERIOD_CONFIG,
+    SNAPSHOT_CACHE_SECONDS,
+    HISTORY_CACHE_SECONDS,
+)
 from backend.app.models import (
+    ComparisonResponse,
     HealthResponse,
     MarketHistoryResponse,
     MarketSnapshot,
     MarketsResponse,
     Period,
 )
+from backend.app.services.comparison import build_comparison
 from backend.app.services.yfinance_client import fetch_all_snapshots, fetch_history, fetch_snapshot
 
 # Create the FastAPI app
@@ -49,6 +63,7 @@ app.add_middleware(
 _snapshots_cache: TTLCache[MarketsResponse] = TTLCache(ttl_seconds=SNAPSHOT_CACHE_SECONDS)
 _quote_cache: TTLCache[MarketSnapshot] = TTLCache(ttl_seconds=SNAPSHOT_CACHE_SECONDS)
 _history_cache: TTLCache[MarketHistoryResponse] = TTLCache(ttl_seconds=HISTORY_CACHE_SECONDS)
+_comparison_cache: TTLCache[ComparisonResponse] = TTLCache(ttl_seconds=COMPARISON_CACHE_SECONDS)
 
 # Health check endpoint
 @app.get("/health", response_model=HealthResponse)
@@ -116,8 +131,70 @@ def get_market_history(
     if cached is not None:
         return cached
 
-    # Fetch the history from the API
+    # Fetch the history from the data layer
     response = fetch_history(symbol, period)
     # Set the cache for the history response
     _history_cache.set(cache_key, response)
+    return response
+
+
+# Multi-asset comparison: rebase to 100 in each asset's own currency (local) or a base currency
+@app.get("/api/markets/compare", response_model=ComparisonResponse)
+def get_market_comparison(
+    period: Period = Query("3M", description="Daily comparison range: 1M, 3M, 1Y, MAX"),
+    base_currency: str = Query(
+        DEFAULT_BASE_CURRENCY,
+        description="Investor base currency for FX conversion before rebasing (used when perspective=base)",
+    ),
+    perspective: str = Query(
+        "base",
+        description="'local' rebases each asset in its own currency; 'base' converts into base_currency first",
+    ),
+    symbols: str | None = Query(
+        None,
+        description="Comma-separated Yahoo symbols; defaults to the five core indices",
+    ),
+) -> ComparisonResponse:
+    view = perspective.lower()
+    if view not in COMPARISON_PERSPECTIVES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Perspective must be one of: {', '.join(COMPARISON_PERSPECTIVES)}",
+        )
+
+    base = base_currency.upper()
+    # Base currency only matters when converting; skip the check for the local view
+    if view == "base" and base not in BASE_CURRENCIES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported base currency: {base_currency}",
+        )
+    if period not in COMPARISON_PERIODS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Comparison period must be one of: {', '.join(COMPARISON_PERIODS)}",
+        )
+
+    symbol_list = None
+    if symbols:
+        symbol_list = [part.strip() for part in symbols.split(",") if part.strip()]
+        unknown = [s for s in symbol_list if s not in INSTRUMENT_BY_SYMBOL]
+        if unknown:
+            raise HTTPException(status_code=404, detail=f"Unknown symbols: {', '.join(unknown)}")
+        if len(symbol_list) > MAX_COMPARISON_SYMBOLS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Compare up to {MAX_COMPARISON_SYMBOLS} symbols at once",
+            )
+
+    symbol_key = ",".join(symbol_list) if symbol_list else "indices"
+    cache_key = f"compare:{period}:{view}:{base}:{symbol_key}"
+    cached = _comparison_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    response = build_comparison(
+        period=period, base_currency=base, symbols=symbol_list, perspective=view
+    )
+    _comparison_cache.set(cache_key, response)
     return response

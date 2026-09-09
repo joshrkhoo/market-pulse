@@ -11,6 +11,14 @@ Period = Literal["1D", "1W", "1M", "3M", "1Y", "MAX"]
 
 
 """
+Investor return perspective for the comparison chart:
+- "local": each series rebased in its own native currency (no FX applied)
+- "base": convert into the selected base currency first, then rebase (price move + FX move)
+"""
+Perspective = Literal["local", "base"]
+
+
+"""
 A model for the market snapshot
 This is used to store the market snapshot for the markets response
 A market snapshot is a single ticker at a given time.
@@ -77,3 +85,42 @@ class MarketHistoryResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str
+
+
+"""
+A single rebased point on the multi-asset comparison chart (starts at 100)
+"""
+class ComparisonPoint(BaseModel):
+    timestamp: datetime
+    rebased: float
+
+
+"""
+One asset in a base-currency comparison: local vs base window returns + rebased path
+"""
+class ComparisonSeries(BaseModel):
+    symbol: str
+    name: str
+    kind: Literal["index", "stock"] = "index"
+    native_currency: str
+    local_return_pct: float | None = Field(
+        None, description="Window return in the asset native currency (no FX)"
+    )
+    base_return_pct: float | None = Field(
+        None, description="Window return after converting into the selected base currency"
+    )
+    points: list[ComparisonPoint]
+    error: str | None = None
+
+
+"""
+Multi-asset comparison response. Chart series are rebased to 100.
+perspective="base" rebases in base_currency (price + FX); "local" rebases each in its own currency.
+"""
+class ComparisonResponse(BaseModel):
+    base_currency: str
+    perspective: Perspective = "base"
+    period: Period
+    series: list[ComparisonSeries]
+    fetched_at: datetime
+    error: str | None = None

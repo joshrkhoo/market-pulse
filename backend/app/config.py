@@ -75,3 +75,14 @@ SNAPSHOT_LOOKBACK_DAYS = "10d"
 # Snapshot cache is short so last quotes can refresh while markets are open
 SNAPSHOT_CACHE_SECONDS = 15
 HISTORY_CACHE_SECONDS = 60
+
+# Comparison chart: base-currency performance after FX conversion + rebase to 100
+DEFAULT_BASE_CURRENCY = "USD"
+BASE_CURRENCIES: tuple[str, ...] = ("USD", "AUD", "EUR", "GBP", "JPY", "HKD")
+# Daily intervals only for FX alignment (skip 1D/1W intraday for v1)
+COMPARISON_PERIODS: tuple[str, ...] = ("1M", "3M", "1Y", "MAX")
+COMPARISON_CACHE_SECONDS = 120
+# Return perspectives the compare endpoint accepts (see models.Perspective)
+COMPARISON_PERSPECTIVES: tuple[str, ...] = ("local", "base")
+# Cap the compare set so the multi-line chart stays readable
+MAX_COMPARISON_SYMBOLS = 6
