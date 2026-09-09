@@ -2,14 +2,31 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { getMarketHistory, getMarkets } from "@/lib/api";
+import { getMarketComparison, getMarketHistory, getMarkets } from "@/lib/api";
 import { formatTimestamp, formatUpdatedAgo, quoteNoun } from "@/lib/format";
-import type { MarketHistoryResponse, MarketSnapshot, Period } from "@/types/market";
-import { DEFAULT_SYMBOL, MARKET_POLL_SECONDS } from "@/types/market";
+import type {
+  ComparisonResponse,
+  ComparisonView,
+  MarketHistoryResponse,
+  MarketSnapshot,
+  Period,
+} from "@/types/market";
+import {
+  COMPARISON_PERIODS,
+  DEFAULT_BASE_CURRENCY,
+  DEFAULT_COMPARE_SYMBOLS,
+  DEFAULT_SYMBOL,
+  LOCAL_VIEW,
+  MARKET_POLL_SECONDS,
+  MAX_COMPARISON_SYMBOLS,
+} from "@/types/market";
 
+import { ComparisonChart } from "./ComparisonChart";
+import { CompareTray } from "./CompareTray";
 import { MarketChart } from "./MarketChart";
 import { MarketTable } from "./MarketTable";
 import { PeriodSelector } from "./PeriodSelector";
+import { PerspectiveSelector } from "./PerspectiveSelector";
 
 export function Dashboard() {
   const [markets, setMarkets] = useState<MarketSnapshot[]>([]);
@@ -21,6 +38,34 @@ export function Dashboard() {
   const [period, setPeriod] = useState<Period>("1M");
   const [history, setHistory] = useState<MarketHistoryResponse | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
+
+  // Comparison chart state (scoped to this section, not a global UI setting)
+  const [comparePeriod, setComparePeriod] = useState<Period>("3M");
+  // "LOCAL" (FX-free) or a base currency (investor view); default USD
+  const [compareView, setCompareView] = useState<ComparisonView>(DEFAULT_BASE_CURRENCY);
+  // Markets explicitly ticked for comparison (starts with the core indices)
+  const [compareSymbols, setCompareSymbols] = useState<string[]>(DEFAULT_COMPARE_SYMBOLS);
+  const [comparison, setComparison] = useState<ComparisonResponse | null>(null);
+  const [comparisonLoading, setComparisonLoading] = useState(false);
+
+  // Map the single UI selection onto the API's perspective + base currency
+  const perspective = compareView === LOCAL_VIEW ? "local" : "base";
+  const baseCurrency = compareView === LOCAL_VIEW ? DEFAULT_BASE_CURRENCY : compareView;
+
+  /**
+   * Toggle a market in/out of the comparison set, capped at MAX_COMPARISON_SYMBOLS
+   */
+  const toggleCompare = useCallback((symbol: string) => {
+    setCompareSymbols((current) => {
+      if (current.includes(symbol)) {
+        return current.filter((item) => item !== symbol);
+      }
+      if (current.length >= MAX_COMPARISON_SYMBOLS) {
+        return current;
+      }
+      return [...current, symbol];
+    });
+  }, []);
 
   // Auto-refresh UI: countdown to next poll, and seconds since last successful update
   const [secondsUntilRefresh, setSecondsUntilRefresh] = useState(MARKET_POLL_SECONDS);
@@ -111,6 +156,48 @@ export function Dashboard() {
   }, [selectedSymbol, period, loadHistory]);
 
   /**
+   * Load the rebase comparison for the ticked markets, selected period, and perspective.
+   * "local" rebases each in its own currency; a currency converts via FX first.
+   */
+  useEffect(() => {
+    // Nothing ticked: clear the chart and skip the request
+    if (compareSymbols.length === 0) {
+      setComparison(null);
+      setComparisonLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setComparisonLoading(true);
+    void getMarketComparison(comparePeriod, baseCurrency, perspective, compareSymbols)
+      .then((response) => {
+        if (!cancelled) {
+          setComparison(response);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setComparison({
+            base_currency: baseCurrency,
+            perspective,
+            period: comparePeriod,
+            series: [],
+            fetched_at: new Date().toISOString(),
+            error: error instanceof Error ? error.message : "Failed to load comparison",
+          });
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setComparisonLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [comparePeriod, baseCurrency, perspective, compareSymbols]);
+
+  /**
    * Tick once per second: advance "updated X ago" and the refresh countdown.
    * Skip while the tab is hidden so we do not hammer Yahoo in the background.
    */
@@ -196,6 +283,8 @@ export function Dashboard() {
           markets={markets}
           selectedSymbol={selectedSymbol}
           onSelect={setSelectedSymbol}
+          compareSymbols={compareSymbols}
+          onToggleCompare={toggleCompare}
         />
       )}
 
@@ -216,6 +305,42 @@ export function Dashboard() {
           <PeriodSelector value={period} onChange={setPeriod} />
         </div>
         <MarketChart history={history} loading={historyLoading} />
+      </section>
+
+      <section className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h2 className="text-lg font-medium text-zinc-100">Compare markets</h2>
+            <p className="mt-1 max-w-2xl text-sm text-zinc-500">
+              Tick markets in the table to compare them, rebased to 100 so performance lines up.{" "}
+              {compareView === LOCAL_VIEW
+                ? "Local view rebases each market in its own currency (no FX)."
+                : `${baseCurrency} view converts each into ${baseCurrency} first, so lines include FX moves.`}{" "}
+              The single-asset chart above stays in native prices.
+            </p>
+          </div>
+          <div className="flex flex-col gap-2 sm:items-end">
+            <PeriodSelector
+              value={comparePeriod}
+              onChange={setComparePeriod}
+              periods={COMPARISON_PERIODS}
+            />
+            <PerspectiveSelector value={compareView} onChange={setCompareView} />
+          </div>
+        </div>
+        <CompareTray
+          symbols={compareSymbols}
+          markets={markets}
+          onRemove={toggleCompare}
+          onClear={() => setCompareSymbols([])}
+        />
+        {compareSymbols.length === 0 ? (
+          <div className="flex h-80 items-center justify-center rounded-xl border border-dashed border-zinc-800 bg-zinc-900/40 text-sm text-zinc-500">
+            Tick markets in the table above to compare them here.
+          </div>
+        ) : (
+          <ComparisonChart comparison={comparison} loading={comparisonLoading} />
+        )}
       </section>
 
       {fetchedAt && (

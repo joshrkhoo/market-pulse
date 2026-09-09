@@ -1,12 +1,17 @@
 "use client";
 
 import type { MarketSnapshot } from "@/types/market";
+import { MAX_COMPARISON_SYMBOLS } from "@/types/market";
 import { formatLevel, formatReturn, formatTimestamp, quoteNoun, returnColor } from "@/lib/format";
 
 interface MarketTableProps {
   markets: MarketSnapshot[];
+  /** Row clicked for the single-asset detail chart */
   selectedSymbol: string;
   onSelect: (symbol: string) => void;
+  /** Symbols ticked for the multi-asset comparison chart */
+  compareSymbols: string[];
+  onToggleCompare: (symbol: string) => void;
 }
 
 /**
@@ -31,13 +36,23 @@ function SessionBadge({ isOpen, note }: { isOpen: boolean; note: string }) {
 /**
  * A table of tickers. Current quotes auto-refresh with the dashboard poll cycle.
  * Indexes show a Level; stocks show a Price. Open/Close are session values.
+ * Clicking a row opens the single-asset chart; the checkbox adds it to the comparison set.
  */
-export function MarketTable({ markets, selectedSymbol, onSelect }: MarketTableProps) {
+export function MarketTable({
+  markets,
+  selectedSymbol,
+  onSelect,
+  compareSymbols,
+  onToggleCompare,
+}: MarketTableProps) {
+  // At the cap, only already-ticked rows stay interactive
+  const capReached = compareSymbols.length >= MAX_COMPARISON_SYMBOLS;
   return (
     <div className="overflow-x-auto overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/60">
-      <table className="w-full min-w-[720px] text-left text-sm">
+      <table className="w-full min-w-[760px] text-left text-sm">
         <thead className="border-b border-zinc-800 bg-zinc-900 text-xs uppercase tracking-wide text-zinc-400">
           <tr>
+            <th className="px-4 py-3 font-medium">Compare</th>
             <th className="px-4 py-3 font-medium">Market</th>
             <th className="px-4 py-3 font-medium text-right">Current</th>
             <th className="px-4 py-3 font-medium text-right">Open</th>
@@ -49,6 +64,9 @@ export function MarketTable({ markets, selectedSymbol, onSelect }: MarketTablePr
         <tbody>
           {markets.map((market) => {
             const isSelected = market.symbol === selectedSymbol;
+            const isCompared = compareSymbols.includes(market.symbol);
+            // Disable ticking new rows once the cap is hit; unticking stays allowed
+            const checkboxDisabled = capReached && !isCompared;
             const noun = quoteNoun(market.kind);
             return (
               <tr
@@ -58,6 +76,23 @@ export function MarketTable({ markets, selectedSymbol, onSelect }: MarketTablePr
                   isSelected ? "bg-sky-950/40" : ""
                 }`}
               >
+                <td className="px-4 py-3">
+                  <input
+                    type="checkbox"
+                    checked={isCompared}
+                    disabled={checkboxDisabled}
+                    aria-label={`Compare ${market.name}`}
+                    title={
+                      checkboxDisabled
+                        ? `Comparing up to ${MAX_COMPARISON_SYMBOLS} markets`
+                        : undefined
+                    }
+                    // Stop the row click so ticking does not also change the detail chart
+                    onClick={(event) => event.stopPropagation()}
+                    onChange={() => onToggleCompare(market.symbol)}
+                    className="h-4 w-4 cursor-pointer accent-sky-500 disabled:cursor-not-allowed disabled:opacity-40"
+                  />
+                </td>
                 <td className="px-4 py-3">
                   <div className="font-medium text-zinc-100">{market.name}</div>
                   <div className="mt-1 flex flex-wrap items-center gap-2">

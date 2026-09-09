@@ -6,12 +6,14 @@ import { PERIODS } from "@/types/market";
 interface PeriodSelectorProps {
   value: Period;
   onChange: (period: Period) => void;
+  /** Optional subset of periods (comparison chart uses daily ranges only) */
+  periods?: Period[];
 }
 
-export function PeriodSelector({ value, onChange }: PeriodSelectorProps) {
+export function PeriodSelector({ value, onChange, periods = PERIODS }: PeriodSelectorProps) {
   return (
     <div className="flex flex-wrap gap-2">
-      {PERIODS.map((period) => {
+      {periods.map((period) => {
         const isActive = period === value;
         return (
           <button
