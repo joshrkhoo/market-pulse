@@ -1,6 +1,54 @@
+<div align="center">
+
 # Market Pulse
 
-A global market dashboard that tracks major equity indices and selected stocks using Yahoo Finance data.
+**A global market dashboard for major equity indices and selected stocks, built on Yahoo Finance data.**
+
+Live quotes and session status for the US, Australia, Hong Kong and Japan. It shows price history for any market and compares markets rebased to 100, either in local currency or converted through FX into a base currency.
+
+[**Live dashboard →**](https://market-pulse.joshrkhoo.com/)
+
+![Next.js](https://img.shields.io/badge/Next.js-000?logo=nextdotjs&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178c6?logo=typescript&logoColor=white)
+![Tailwind](https://img.shields.io/badge/Tailwind-0f172a?logo=tailwindcss&logoColor=38bdf8)
+![Recharts](https://img.shields.io/badge/Recharts-22b5bf)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+![yfinance](https://img.shields.io/badge/yfinance-6001d2?logo=yahoo&logoColor=white)
+![pytest](https://img.shields.io/badge/tested_with-pytest-0a9edc?logo=pytest&logoColor=white)
+
+<img src="docs/screenshots/overview.png" alt="Market Pulse overview table" width="860">
+
+</div>
+
+---
+
+## Demo
+
+### Price history for any market
+
+Click a row to chart that market in its native currency, then switch between `1D`, `1W`, `1M`, `3M`, `1Y` and `MAX`. Hover the chart for exact values.
+
+<p align="center"><img src="docs/screenshots/history.gif" alt="Switching markets and chart ranges" width="860"></p>
+
+### Compare markets: local vs base-currency returns
+
+Tick up to six markets in the table to plot them together, rebased to 100. Choose **Local** to see each market's own-currency performance, or pick a base currency (USD, AUD, EUR, GBP, JPY, HKD) to convert through FX first. The returns table shows how much of each move came from currency.
+
+<p align="center"><img src="docs/screenshots/compare.gif" alt="Comparing markets across currencies" width="860"></p>
+
+<details>
+<summary><b>More screenshots</b></summary>
+<br>
+
+**Compare chart (USD view, 3M)**
+
+<img src="docs/screenshots/compare.png" alt="Compare chart in USD" width="800">
+
+**Full dashboard**
+
+<img src="docs/screenshots/dashboard-full.png" alt="Full dashboard" width="800">
+
+</details>
 
 ## Dashboard features
 
